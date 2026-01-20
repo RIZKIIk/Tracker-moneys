@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DompetSiswa Pro: Student Edition 🚀</title>
+    
+    <!-- Libraries -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/locale/id.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/relativeTime.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <script>
+        dayjs.extend(window.dayjs_plugin_relativeTime);
+        dayjs.locale('id');
+
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0f172a', 
+                        card: '#1e293b', 
+                        primary: '#6366f1', 
+                        secondary: '#ec4899',
+                        success: '#10b981',
+                        danger: '#ef4444',
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { background-color: #0f172a; font-family: 'Plus Jakarta Sans', sans-serif; color: #f8fafc; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 1.5rem; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-up { animation: slideUp 0.4s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // --- UTILS ---
+    const formatRupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+    
+    // --- ICONS ---
+    const Icon = ({ name, size = 20, className = "" }) => {
+        useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+        return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+    };
+
+    // --- CONSTANTS ---
+    const CATEGORIES = [
+        { id: 'jajan', name: 'Makan/Jajan', icon: 'coffee', type: 'expense', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+        { id: 'transport', name: 'Transport', icon: 'bus', type: 'expense', color: 'text-blue-400', bg: 'bg-blue-400/10' },
+        { id: 'game', name: 'Game/Topup', icon: 'gamepad-2', type: 'expense', color: 'text-purple-400', bg: 'bg-purple-400/10' },
+        { id: 'edu', name: 'Sekolah', icon: 'graduation-cap', type: 'expense', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+        { id: 'sangu', name: 'Uang Saku', icon: 'wallet', type: 'income', color: 'text-green-400', bg: 'bg-green-400/10' },
+        { id: 'gift', name: 'Hadiah/Bonus', icon: 'gift', type: 'income', color: 'text-pink-400', bg: 'bg-pink-400/10' },
+    ];
+
+    const AVATARS = ['🎓', '🦁', '🐱', '🎮', '⚽', '🎨', '🚀', '⭐'];
+
+    // --- MAIN COMPONENTS ---
+
+    const App = () => {
+        const [activeTab, setActiveTab] = useState('home');
+        const [transactions, setTransactions] = useState([]);
+        const [debts, setDebts] = useState([]);
+        const [wishlist, setWishlist] = useState([]);
+        const [user, setUser] = useState({ name: 'Sobat Pelajar', avatar: '🎓' });
+        const [isModalOpen, setIsModalOpen] = useState(false);
+        const [editingTx, setEditingTx] = useState(null);
+
+        // Persistent Storage
+        useEffect(() => {
+            const data = localStorage.getItem('dompetSiswa_v2');
+            if (data) {
+                const p = JSON.parse(data);
+                setTransactions(p.transactions || []);
+                setDebts(p.debts || []);
+                setWishlist(p.wishlist || []);
+                setUser(p.user || { name: 'Sobat Pelajar', avatar: '🎓' });
+            }
+        }, []);
+
+        useEffect(() => {
+            localStorage.setItem('dompetSiswa_v2', JSON.stringify({ transactions, debts, wishlist, user }));
+        }, [transactions, debts, wishlist, user]);
+
+        // Logic
+        const balance = transactions.reduce((acc, t) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
+        
+        const deleteTx = (id) => {
+            if(confirm('Hapus transaksi ini?')) {
+                setTransactions(transactions.filter(t => t.id !== id));
+            }
+        };
+
+        const exportData = () => {
+            const blob = new Blob([JSON.stringify({transactions, debts, wishlist, user}, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `DompetSiswa_Backup_${dayjs().format('YYYY-MM-DD')}.json`;
+            a.click();
+        };
+
+        const resetData = () => {
+            if(confirm('PERINGATAN: Semua data akan dihapus permanen. Lanjutkan?')) {
+                setTransactions([]);
+                setDebts([]);
+                setWishlist([]);
+                localStorage.clear();
+                window.location.reload();
+            }
+        };
+
+        return (
+            <div className="max-w-md mx-auto min-h-screen pb-24 relative overflow-x-hidden">
+                {/* Header */}
+                <header className="p-6 flex justify-between items-center">
+                    <div>
+                        <h1 className="text-xl font-extrabold tracking-tight">DompetSiswa<span className="text-primary">.Pro</span></h1>
+                        <p className="text-xs text-slate-500">Track your money, reach your goals.</p>
+                    </div>
+                    <button 
+                        onClick={() => setActiveTab('settings')}
+                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-xl transition-all ${activeTab === 'settings' ? 'border-primary bg-primary/20 scale-110' : 'border-slate-700 bg-card'}`}
+                    >
+                        {user.avatar}
+                    </button>
+                </header>
+
+                <main className="px-6 space-y-6">
+                    {activeTab === 'home' && <HomeView transactions={transactions} balance={balance} onDelete={deleteTx} onEdit={(tx) => { setEditingTx(tx); setIsModalOpen(true); }} />}
+                    {activeTab === 'wishlist' && <WishlistView wishlist={wishlist} setWishlist={setWishlist} balance={balance} />}
+                    {activeTab === 'debt' && <DebtView debts={debts} setDebts={setDebts} />}
+                    {activeTab === 'settings' && <SettingsView user={user} setUser={setUser} onExport={exportData} onReset={resetData} />}
+                </main>
+
+                {/* Bottom Nav */}
+                <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-card/80 backdrop-blur-xl border-t border-white/5 px-8 py-3 flex justify-between items-center z-50">
+                    <NavBtn icon="home" active={activeTab === 'home'} onClick={() => setActiveTab('home')} label="Beranda" />
+                    <NavBtn icon="target" active={activeTab === 'wishlist'} onClick={() => setActiveTab('wishlist')} label="Target" />
+                    
+                    <button 
+                        onClick={() => { setEditingTx(null); setIsModalOpen(true); }}
+                        className="bg-primary hover:bg-indigo-600 text-white w-14 h-14 rounded-2xl -mt-10 shadow-xl shadow-primary/30 flex items-center justify-center transition-transform active:scale-95"
+                    >
+                        <Icon name="plus" size={32} />
+                    </button>
+
+                    <NavBtn icon="hand-coins" active={activeTab === 'debt'} onClick={() => setActiveTab('debt')} label="Utang" />
+                    <NavBtn icon="settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Opsi" />
+                </nav>
+
+                {/* Modals */}
+                {isModalOpen && (
+                    <TxModal 
+                        editData={editingTx}
+                        onClose={() => setIsModalOpen(false)} 
+                        onSave={(data) => {
+                            if (editingTx) {
+                                setTransactions(transactions.map(t => t.id === editingTx.id ? {...data, id: t.id, date: t.date} : t));
+                            } else {
+                                setTransactions([{...data, id: generateId(), date: new Date().toISOString()}, ...transactions]);
+                                if (data.type === 'income') confetti({ particleCount: 100, spread: 70, origin: { y: 0.7 } });
+                            }
+                            setIsModalOpen(false);
+                        }} 
+                    />
+                )}
+            </div>
+        );
+    };
+
+    const NavBtn = ({ icon, active, onClick, label }) => (
+        <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-colors ${active ? 'text-primary' : 'text-slate-500'}`}>
+            <Icon name={icon} size={22} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+        </button>
+    );
+
+    // --- SUB-VIEWS ---
+
+    const HomeView = ({ transactions, balance, onDelete, onEdit }) => {
+        const todayExp = transactions
+            .filter(t => dayjs(t.date).isSame(dayjs(), 'day') && t.type === 'expense')
+            .reduce((acc, t) => acc + t.amount, 0);
+
+        return (
+            <div className="animate-up space-y-6">
+                <div className="glass-panel p-6 bg-gradient-to-br from-indigo-600/20 to-purple-600/10">
+                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Saldo Kamu</p>
+                    <h2 className="text-3xl font-black mb-4 tracking-tight">{formatRupiah(balance)}</h2>
+                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-2">
+                            <Icon name="trending-down" size={16} className="text-rose-400" />
+                            <span className="text-xs text-slate-300">Jajan Hari Ini:</span>
+                        </div>
+                        <span className="font-bold text-rose-400">{formatRupiah(todayExp)}</span>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <h3 className="font-bold text-lg flex justify-between items-center">
+                        Riwayat Transaksi
+                        <span className="text-[10px] bg-slate-800 px-2 py-1 rounded-full text-slate-400">{transactions.length} Total</span>
+                    </h3>
+                    
+                    {transactions.length === 0 ? (
+                        <div className="text-center py-12 border-2 border-dashed border-slate-800 rounded-3xl opacity-50">
+                            <Icon name="folder-open" size={40} className="mx-auto mb-2" />
+                            <p className="text-sm">Belum ada catatan.</p>
+                        </div>
+                    ) : (
+                        transactions.map(tx => {
+                            const cat = CATEGORIES.find(c => c.id === tx.category) || CATEGORIES[0];
+                            return (
+                                <div key={tx.id} className="group flex items-center justify-between p-4 bg-card rounded-2xl border border-slate-800 hover:border-slate-600 transition-all">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-xl ${cat.bg} ${cat.color}`}>
+                                            <Icon name={cat.icon} size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-sm text-slate-200">{tx.title}</p>
+                                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">{dayjs(tx.date).fromNow()}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className={`font-black text-sm ${tx.type === 'income' ? 'text-success' : 'text-danger'}`}>
+                                            {tx.type === 'income' ? '+' : '-'}{formatRupiah(tx.amount)}
+                                        </span>
+                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => onEdit(tx)} className="text-slate-500 hover:text-white"><Icon name="edit-2" size={14}/></button>
+                                            <button onClick={() => onDelete(tx.id)} className="text-slate-500 hover:text-danger"><Icon name="trash-2" size={14}/></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    const WishlistView = ({ wishlist, setWishlist, balance }) => {
+        const [showAdd, setShowAdd] = useState(false);
+        const [form, setForm] = useState({ name: '', price: '' });
+
+        const addWish = () => {
+            if(!form.name || !form.price) return;
+            setWishlist([{ id: generateId(), ...form, price: parseInt(form.price) }, ...wishlist]);
+            setForm({ name: '', price: '' });
+            setShowAdd(false);
+        };
+
+        return (
+            <div className="animate-up space-y-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-black">Wishlist Impian 🌠</h2>
+                    <button onClick={() => setShowAdd(!showAdd)} className="text-primary text-xs font-bold bg-primary/10 px-3 py-1 rounded-full">
+                        {showAdd ? 'Batal' : '+ Tambah'}
+                    </button>
+                </div>
+
+                {showAdd && (
+                    <div className="glass-panel p-4 space-y-3 border-primary/20">
+                        <input placeholder="Mau beli apa?" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm outline-none" 
+                               value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                        <input type="number" placeholder="Harganya berapa?" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm outline-none"
+                               value={form.price} onChange={e => setForm({...form, price: e.target.value})} />
+                        <button onClick={addWish} className="w-full bg-primary py-3 rounded-xl font-bold text-sm">Pasang Target</button>
+                    </div>
+                )}
+
+                <div className="space-y-4">
+                    {wishlist.length === 0 && <p className="text-center text-slate-500 py-10 italic">Belum punya target belanja? Pasang biar semangat nabung!</p>}
+                    {wishlist.map(w => {
+                        const progress = Math.min((balance / w.price) * 100, 100);
+                        const isDone = progress >= 100;
+                        return (
+                            <div key={w.id} className="bg-card p-5 rounded-3xl border border-slate-800 space-y-3">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h4 className="font-bold">{w.name}</h4>
+                                        <p className="text-xs text-slate-400">Target: {formatRupiah(w.price)}</p>
+                                    </div>
+                                    <button onClick={() => setWishlist(wishlist.filter(x => x.id !== w.id))} className="text-slate-600"><Icon name="x" size={16}/></button>
+                                </div>
+                                <div className="h-3 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                                    <div className={`h-full transition-all duration-1000 ${isDone ? 'bg-success shadow-[0_0_10px_#10b981]' : 'bg-primary'}`} style={{width: `${progress}%`}}></div>
+                                </div>
+                                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                                    <span className={isDone ? 'text-success' : 'text-primary'}>{Math.floor(progress)}% Tercapai</span>
+                                    <span className="text-slate-500">{isDone ? 'Sikat Bos!' : `Kurang ${formatRupiah(w.price - balance)}`}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    const DebtView = ({ debts, setDebts }) => {
+        const [showAdd, setShowAdd] = useState(false);
+        const [form, setForm] = useState({ name: '', amount: '', type: 'borrow' });
+
+        const addDebt = () => {
+            if(!form.name || !form.amount) return;
+            setDebts([{ id: generateId(), ...form, amount: parseInt(form.amount), date: new Date().toISOString(), paid: false }, ...debts]);
+            setForm({ name: '', amount: '', type: 'borrow' });
+            setShowAdd(false);
+        };
+
+        return (
+            <div className="animate-up space-y-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-black">Utang & Piutang 🤝</h2>
+                    <button onClick={() => setShowAdd(!showAdd)} className="text-primary text-xs font-bold bg-primary/10 px-3 py-1 rounded-full">
+                        {showAdd ? 'Batal' : '+ Catat'}
+                    </button>
+                </div>
+
+                {showAdd && (
+                    <div className="glass-panel p-4 space-y-3">
+                        <div className="flex gap-2">
+                            <button onClick={() => setForm({...form, type:'borrow'})} className={`flex-1 py-2 rounded-lg text-xs font-bold ${form.type === 'borrow' ? 'bg-rose-500' : 'bg-slate-800 text-slate-500'}`}>Gue Pinjem</button>
+                            <button onClick={() => setForm({...form, type:'lend'})} className={`flex-1 py-2 rounded-lg text-xs font-bold ${form.type === 'lend' ? 'bg-emerald-500' : 'bg-slate-800 text-slate-500'}`}>Temen Pinjem</button>
+                        </div>
+                        <input placeholder="Nama orangnya" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm outline-none" 
+                               value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                        <input type="number" placeholder="Berapa duit?" className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-sm outline-none"
+                               value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
+                        <button onClick={addDebt} className="w-full bg-primary py-3 rounded-xl font-bold text-sm">Simpan Catatan</button>
+                    </div>
+                )}
+
+                <div className="space-y-3">
+                    {debts.map(d => (
+                        <div key={d.id} className={`flex items-center justify-between p-4 bg-card rounded-2xl border ${d.paid ? 'opacity-40 border-slate-800' : 'border-slate-700'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-2 h-8 rounded-full ${d.type === 'borrow' ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
+                                <div>
+                                    <p className="font-bold text-sm">{d.name}</p>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase">{d.type === 'borrow' ? 'Gue Hutang' : 'Punya Gue'} • {dayjs(d.date).format('DD MMM')}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-black text-sm mb-1">{formatRupiah(d.amount)}</p>
+                                {!d.paid ? (
+                                    <button onClick={() => setDebts(debts.map(x => x.id === d.id ? {...x, paid: true} : x))} className="text-[10px] bg-slate-800 text-slate-300 px-3 py-1 rounded-full font-bold">LUNASIN</button>
+                                ) : (
+                                    <button onClick={() => setDebts(debts.filter(x => x.id !== d.id))} className="text-danger"><Icon name="trash-2" size={14}/></button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const SettingsView = ({ user, setUser, onExport, onReset }) => (
+        <div className="animate-up space-y-6">
+            <div className="glass-panel p-6 text-center">
+                <div className="mb-4">
+                    <div className="w-20 h-20 bg-primary/20 rounded-full mx-auto flex items-center justify-center text-4xl mb-4 border-2 border-primary/50 shadow-xl shadow-primary/20">
+                        {user.avatar}
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-2 mb-6">
+                        {AVATARS.map(a => (
+                            <button key={a} onClick={() => setUser({...user, avatar: a})} className={`w-8 h-8 rounded-lg flex items-center justify-center border ${user.avatar === a ? 'border-primary bg-primary/20' : 'border-slate-800'}`}>{a}</button>
+                        ))}
+                    </div>
+                    <input 
+                        className="bg-transparent border-b border-slate-700 text-center text-xl font-bold w-full outline-none focus:border-primary pb-1"
+                        value={user.name}
+                        onChange={e => setUser({...user, name: e.target.value})}
+                        placeholder="Nama Panggilan"
+                    />
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <button onClick={onExport} className="w-full bg-slate-800 p-4 rounded-2xl flex items-center justify-between font-bold text-sm hover:bg-slate-700 transition-colors">
+                    <div className="flex items-center gap-3"><Icon name="download" className="text-primary"/> Ekspor Data (JSON)</div>
+                    <Icon name="chevron-right" size={16}/>
+                </button>
+                <button onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.onchange = (e) => {
+                        const file = e.target.files[0];
+                        const reader = new FileReader();
+                        reader.onload = (f) => {
+                            try {
+                                const data = JSON.parse(f.target.result);
+                                if(confirm('Impor data akan menimpa data saat ini. Lanjutkan?')) {
+                                    localStorage.setItem('dompetSiswa_v2', JSON.stringify(data));
+                                    window.location.reload();
+                                }
+                            } catch(err) { alert('File tidak valid!'); }
+                        };
+                        reader.readAsText(file);
+                    };
+                    input.click();
+                }} className="w-full bg-slate-800 p-4 rounded-2xl flex items-center justify-between font-bold text-sm hover:bg-slate-700 transition-colors">
+                    <div className="flex items-center gap-3"><Icon name="upload" className="text-emerald-500"/> Impor Data</div>
+                    <Icon name="chevron-right" size={16}/>
+                </button>
+                <button onClick={onReset} className="w-full bg-rose-500/10 p-4 rounded-2xl flex items-center justify-between font-bold text-sm text-rose-400 hover:bg-rose-500/20 transition-colors">
+                    <div className="flex items-center gap-3"><Icon name="refresh-ccw" /> Reset Aplikasi</div>
+                    <Icon name="alert-triangle" size={16}/>
+                </button>
+            </div>
+            
+            <div className="text-center text-[10px] text-slate-600 font-bold uppercase tracking-[0.2em] pt-4">
+                DompetSiswa v2.0 • Made for Students 🚀
+            </div>
+        </div>
+    );
+
+    const TxModal = ({ editData, onClose, onSave }) => {
+        const [form, setForm] = useState(editData || { title: '', amount: '', category: 'jajan', type: 'expense' });
+
+        return (
+            <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
+                <div className="bg-card w-full max-w-sm rounded-[2.5rem] p-8 border border-slate-700 relative animate-up shadow-2xl">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-black">{editData ? 'Edit Catatan' : 'Tambah Catatan'}</h2>
+                        <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full"><Icon name="x"/></button>
+                    </div>
+
+                    <div className="flex bg-slate-900 rounded-2xl p-1 mb-6 border border-white/5">
+                        <button onClick={() => setForm({...form, type: 'expense'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${form.type === 'expense' ? 'bg-danger text-white' : 'text-slate-500'}`}>Pengeluaran</button>
+                        <button onClick={() => setForm({...form, type: 'income'})} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${form.type === 'income' ? 'bg-success text-white' : 'text-slate-500'}`}>Pemasukan</button>
+                    </div>
+
+                    <div className="space-y-5">
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Rp</span>
+                            <input autoFocus type="number" placeholder="0" className="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 pl-12 text-2xl font-black outline-none focus:border-primary" 
+                                   value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} />
+                        </div>
+                        <input placeholder="Buat apa nih?" className="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm font-bold outline-none focus:border-primary"
+                               value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+                        
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-500 mb-3 tracking-widest ml-1">Pilih Kategori</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                {CATEGORIES.filter(c => c.type === form.type).map(cat => (
+                                    <button 
+                                        key={cat.id} 
+                                        onClick={() => setForm({...form, category: cat.id})}
+                                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all ${form.category === cat.id ? 'bg-primary/20 border-primary' : 'border-slate-800 bg-slate-900/50 hover:bg-slate-800'}`}
+                                    >
+                                        <div className={`${cat.color} ${cat.bg} p-2 rounded-xl`}><Icon name={cat.icon} size={18}/></div>
+                                        <span className="text-[9px] font-bold uppercase truncate w-full text-center">{cat.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => { if(form.title && form.amount) onSave({...form, amount: parseInt(form.amount)}); }}
+                        className="w-full bg-primary hover:bg-indigo-600 text-white font-black py-5 rounded-2xl mt-8 shadow-xl shadow-primary/30 active:scale-95 transition-all uppercase tracking-widest text-sm"
+                    >
+                        Simpan Transaksi
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+    </script>
+</body>
+</html>
+
